@@ -34,6 +34,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Drives the Dock icon: shown only while a real window (Settings, Setup) is open.
     private let dockVisibility = DockVisibilityController()
 
+    /// Launch argument that re-registers the background services before resuming (see its use below).
+    static let repairServicesArgument = "--repair-services"
+
     func applicationDidFinishLaunching(_: Notification) {
         Self.shared = self
 
@@ -103,7 +106,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 // reopening the app puts it back to work. Retried, since this launch can coincide
                 // with the daemon adopting an updated binary (it restarts), and a resume lost to
                 // that restart would otherwise leave Adrafinil stuck paused.
-                Task { await DaemonClient.shared.resumeAtLaunch() }
+                //
+                // An installer that swapped in a new build launches the app with `--repair-services`
+                // first: a build signed without a Developer ID gets a new code identity with every
+                // update, and macOS will not start background services registered under the previous
+                // one until the app registers them again (the popover's Repair, done unattended).
+                Task {
+                    if CommandLine.arguments.contains(Self.repairServicesArgument) {
+                        _ = await HelperInstaller.repairServices()
+                    }
+                    await DaemonClient.shared.resumeAtLaunch()
+                }
 
                 // Updates, from here on: with the user's auto-install setting on (the default),
                 // checked in the background and installed only once the Mac is idle and the
