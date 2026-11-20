@@ -1,0 +1,39 @@
+name: Fork build (ad-hoc signed)
+
+# Fork-only: builds the Release app ad-hoc signed ("Sign to Run Locally") so it can run on a Mac
+# without the upstream Developer ID. Not part of any upstream change.
+on:
+  push:
+    branches: [fiu-build]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - name: Select latest Xcode
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+      - name: Build Release, ad-hoc signed
+        run: |
+          xcodebuild -project Adrafinil.xcodeproj -scheme Adrafinil -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= \
+            OTHER_CODE_SIGN_FLAGS=--timestamp=none build
+      - name: Show signatures
+        run: |
+          APP=build/Build/Products/Release/Adrafinil.app
+          for f in "$APP" "$APP/Contents/Library/LaunchAgents/AdrafinilDaemon" "$APP/Contents/Library/LaunchDaemons/AdrafinilHelper" "$APP/Contents/Helpers/adrafinil"; do
+            codesign -dv "$f" 2>&1 | grep -E "Identifier|Signature|TeamIdentifier" || true
+          done
+          codesign --verify --deep --strict "$APP"
+      - name: Zip
+        run: ditto -c -k --keepParent build/Build/Products/Release/Adrafinil.app Adrafinil.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Adrafinil-adhoc
+          path: Adrafinil.zip
+          retention-days: 30
