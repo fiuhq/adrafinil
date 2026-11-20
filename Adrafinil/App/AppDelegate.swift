@@ -114,6 +114,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 Task {
                     if CommandLine.arguments.contains(Self.repairServicesArgument) {
                         _ = await HelperInstaller.repairServices()
+                        // Repair registers the login item; an unattended one must not undo the user's choice.
+                        if !AdrafinilSettings.load().launchAtLogin {
+                            try? await SMAppService.mainApp.unregister()
+                        }
                     }
                     await DaemonClient.shared.resumeAtLaunch()
                 }
